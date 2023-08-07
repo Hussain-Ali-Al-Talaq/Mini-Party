@@ -51,7 +51,7 @@ public class ServerSideMovement : NetworkBehaviour
             inputPayLoad.InputVector = Vector3.Normalize(inputPayLoad.InputVector);
             BufferIndex = inputPayLoad.Tick % BufferSize;
 
-            PositionBuffer[BufferIndex] = ProcesseMovement(inputPayLoad);
+            PositionBuffer[BufferIndex] = ProcessMovement(inputPayLoad);
         }
 
         if(BufferIndex != -1)
@@ -59,30 +59,32 @@ public class ServerSideMovement : NetworkBehaviour
             PlayerMovement.RecivePlayerPositionClientRpc(PositionBuffer[BufferIndex], new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new List<ulong>() { OwnerClientId } } });
         }
     }
-    private MovementStates.PositionPayLoad ProcesseMovement(MovementStates.InputPayLoad inputPayLoad)
+    private MovementStates.PositionPayLoad ProcessMovement(MovementStates.InputPayLoad inputPayLoad)
     {
+        float MovementSpeed = PlayerMovement.GetMovementSpeed();
+
         //Must Be The Same On Client Side 
-        Vector3 PositionOffset = inputPayLoad.InputVector * PlayerMovement.GetMovementSpeed() * minTimeBetweenTicks;
-        if (!Physics.CapsuleCast(GlobalPlayerTransform.position - Vector3.up * GlobalPlayerTransform.GetComponent<CapsuleCollider>().height / 2, GlobalPlayerTransform.position + Vector3.up * GlobalPlayerTransform.GetComponent<CapsuleCollider>().height / 2, GlobalPlayerTransform.GetComponent<CapsuleCollider>().radius, PositionOffset.normalized, out RaycastHit raycast, 1))
+        Vector3 PositionOffset = inputPayLoad.InputVector.normalized * MovementSpeed * minTimeBetweenTicks;
+        if (!CapsuleCast(PositionOffset, out RaycastHit raycast))
         {
             GlobalPlayerTransform.position += PositionOffset;
         }
         else
         {
-            //check distence to closeset player / collisison
-            if (raycast.distance > 0.1f)
+            //Try To move in one x dir
+            Vector3 xOffset = Vector3.right * inputPayLoad.InputVector.normalized.x * MovementSpeed * minTimeBetweenTicks;
+                
+            if (!CapsuleCast(xOffset, out RaycastHit x))
             {
-                float div = Vector3.Magnitude(PositionOffset) / raycast.distance;
-                //check if can move as normal
-                if (div < 1)
-                {
-                    GlobalPlayerTransform.position += PositionOffset;
-                }
+                GlobalPlayerTransform.position += xOffset;
             }
-            else if(raycast.distance > 0.04f)
+
+            //Try To move in one z dir    
+            Vector3 zOffset = Vector3.forward * inputPayLoad.InputVector.normalized.z * MovementSpeed * minTimeBetweenTicks;
+                
+            if (!CapsuleCast(zOffset, out RaycastHit z))
             {
-                // if the distence to closeset player / collisison is less than 0.1
-                GlobalPlayerTransform.position += PositionOffset.normalized * 0.035f;
+                GlobalPlayerTransform.position += zOffset;
             }
         }
 
@@ -92,11 +94,24 @@ public class ServerSideMovement : NetworkBehaviour
             Position = GlobalPlayerTransform.position,
         };
     }
+    private bool CapsuleCast(Vector3 PositionOffset, out RaycastHit raycast)
+    {
+        return Physics.CapsuleCast(GlobalPlayerTransform.position - Vector3.up *
+            GlobalPlayerTransform.GetComponent<CapsuleCollider>().height / 2,
+            GlobalPlayerTransform.position + Vector3.up *
+            GlobalPlayerTransform.GetComponent<CapsuleCollider>().height / 2,
+            GlobalPlayerTransform.GetComponent<CapsuleCollider>().radius, PositionOffset.normalized, out raycast, 1 * PlayerMovement.GetMovementSpeed() * minTimeBetweenTicks);
+    }
 
     [ServerRpc]
     public void RecivePlayerInputServerRpc(MovementStates.InputPayLoad inputPayLoad)
     {
         InputQueue.Enqueue(inputPayLoad);
+    }
+    [ServerRpc]
+    public void RecivePlayerRotationServerRpc(Vector3 Rotation)
+    {
+        GlobalPlayerTransform.forward = Rotation;
     }
 
 }

@@ -21,15 +21,15 @@ public class PlayerMovement : NetworkBehaviour
     private MovementStates.PositionPayLoad LastProcessedState;
     private Vector3 InputVector;
 
-    private Vector3 PlayerPosition;
-
     private PlayerInputAsset PlayerInput;
 
     [SerializeField] private float MovementSpeed = 5;
+    [SerializeField] private float RotationSpeed = 0.1f;
     [SerializeField] private Transform LocalPlayerTransform;
 
     [SerializeField] private Transform GlobalPlayerTransform;
     [SerializeField] private ServerSideMovement ServerMovement;
+
     
 
     private void Start()
@@ -58,7 +58,6 @@ public class PlayerMovement : NetworkBehaviour
         InputVector = new Vector3(PlayerInput.Player.Movement.ReadValue<Vector2>().x,0,
                                   PlayerInput.Player.Movement.ReadValue<Vector2>().y);
         
-        
         timer += Time.deltaTime;
 
         while (timer >= minTimeBetweenTicks) 
@@ -86,51 +85,62 @@ public class PlayerMovement : NetworkBehaviour
         
         InputBuffer[BufferIndex] = inputPayLoad;
 
-        PositionBuffer[BufferIndex] = ProcesseMovement(inputPayLoad);
+        PositionBuffer[BufferIndex] = ProcessMovement(inputPayLoad);
+
+        Vector3 Rotation = ProcessRotation();
 
         if (IsServer || IsHost)
         {
             GlobalPlayerTransform.position = LocalPlayerTransform.position;
+            GlobalPlayerTransform.forward = Rotation;
         }
         else
         {
             ServerMovement.RecivePlayerInputServerRpc(inputPayLoad);
+            ServerMovement.RecivePlayerRotationServerRpc(Rotation);
         }
     }
-    private MovementStates.PositionPayLoad ProcesseMovement(MovementStates.InputPayLoad inputPayLoad)
+    private MovementStates.PositionPayLoad ProcessMovement(MovementStates.InputPayLoad inputPayLoad)
     {
         //Must Be The Same On Server Side 
-        Vector3 PositionOffset = inputPayLoad.InputVector * MovementSpeed * minTimeBetweenTicks;
-        if (!Physics.CapsuleCast(PlayerPosition - Vector3.up * LocalPlayerTransform.GetComponent<CapsuleCollider>().height / 2, PlayerPosition + Vector3.up * LocalPlayerTransform.GetComponent<CapsuleCollider>().height / 2, LocalPlayerTransform.GetComponent<CapsuleCollider>().radius, PositionOffset.normalized, out RaycastHit raycast, 1))
+        Vector3 PositionOffset = inputPayLoad.InputVector.normalized * MovementSpeed * minTimeBetweenTicks;
+        if (!CapsuleCast(PositionOffset,out RaycastHit raycast))
         {
-            PlayerPosition += PositionOffset;
+            LocalPlayerTransform.position += PositionOffset;
         }
         else
         {
-            //check distence to closeset player / collisison
-            if (raycast.distance > 0.1f)
+            //Try To move in one x dir
+            Vector3 xOffset = Vector3.right * inputPayLoad.InputVector.normalized.x * MovementSpeed * minTimeBetweenTicks;
+                
+            if (!CapsuleCast(xOffset, out RaycastHit x))
             {
-                float div = Vector3.Magnitude(PositionOffset) / raycast.distance;
-                //check if can move as normal
-                if (div < 1)
-                {   
-                    PlayerPosition += PositionOffset;
-                }
+                LocalPlayerTransform.position += xOffset;
             }
-            else if (raycast.distance > 0.04f)
+
+            //Try To move in one z dir    
+            Vector3 zOffset = Vector3.forward * inputPayLoad.InputVector.normalized.z * MovementSpeed * minTimeBetweenTicks;
+
+            if (!CapsuleCast(zOffset, out RaycastHit z))
             {
-                // if the distence to closeset player / collisison is less than 0.1
-                PlayerPosition += PositionOffset.normalized * 0.04f;
+                LocalPlayerTransform.position += zOffset;
             }
         }
-
-        LocalPlayerTransform.position = PlayerPosition;
 
         return new MovementStates.PositionPayLoad
         {
             Tick = inputPayLoad.Tick,
             Position = LocalPlayerTransform.position,
         };
+    }
+
+    private bool CapsuleCast(Vector3 PositionOffset, out RaycastHit raycast)
+    {
+        return Physics.CapsuleCast(LocalPlayerTransform.position - Vector3.up *
+            LocalPlayerTransform.GetComponent<CapsuleCollider>().height / 2,
+            LocalPlayerTransform.position + Vector3.up *
+            LocalPlayerTransform.GetComponent<CapsuleCollider>().height / 2,
+            LocalPlayerTransform.GetComponent<CapsuleCollider>().radius, PositionOffset.normalized, out raycast, 1 * MovementSpeed * minTimeBetweenTicks);
     }
 
     private void HandleServerReconciliation()
@@ -145,7 +155,7 @@ public class PlayerMovement : NetworkBehaviour
         {
             Debug.Log("Reconciling");
 
-            PlayerPosition = LatestServerState.Position;
+            LocalPlayerTransform.position = LatestServerState.Position;
             PositionBuffer[ServerStateBufferIndex] = LatestServerState;
 
             int tickToProcess = LatestServerState.Tick + 1;
@@ -153,11 +163,20 @@ public class PlayerMovement : NetworkBehaviour
             while(tickToProcess < currentTick) 
             {
                 int bufferIndex = tickToProcess % BufferSize;
-                PositionBuffer[bufferIndex] = ProcesseMovement(InputBuffer[bufferIndex]);
+                PositionBuffer[bufferIndex] = ProcessMovement(InputBuffer[bufferIndex]);
 
                 tickToProcess++;
             }
         }
+    }
+
+    private Vector3 ProcessRotation()
+    {
+        if (InputVector != Vector3.zero)
+        {
+            LocalPlayerTransform.forward = Vector3.Slerp(LocalPlayerTransform.forward, InputVector.normalized, RotationSpeed);
+        }
+        return LocalPlayerTransform.forward;
     }
 
     [ClientRpc]
