@@ -39,27 +39,6 @@ public class CreateButton : MonoBehaviour
 
         NetworkManager.Singleton.StartHost();
 
-        NetworkManager.Singleton.SceneManager.OnLoad += SceneManager_OnLoad;
-        NetworkManager.Singleton.SceneManager.OnLoadComplete += SceneManager_OnLoadComplete;
-        NetworkManager.Singleton.SceneManager.OnLoadEventCompleted += SceneManager_OnLoadEventCompleted;
-        NetworkManager.Singleton.SceneManager.LoadScene("Game", LoadSceneMode.Single);
-    }
-
-
-
-    private void SceneManager_OnLoad(ulong clientId, string sceneName, LoadSceneMode loadSceneMode, AsyncOperation asyncOperation)
-    {
-        Debug.Log("Scene Loading");
-        NetworkManager.Singleton.SceneManager.OnLoad -= SceneManager_OnLoad;
-    }
-
-    private void SceneManager_OnLoadComplete(ulong clientId, string sceneName, LoadSceneMode loadSceneMode)
-    {
-        Debug.Log("Scene Loaded");
-        NetworkManager.Singleton.SceneManager.OnLoadComplete -= SceneManager_OnLoadComplete;
-    }
-    private void SceneManager_OnLoadEventCompleted(string sceneName, LoadSceneMode loadSceneMode, List<ulong> clientsCompleted, List<ulong> clientsTimedOut)
-    {
-        Debug.Log("Done, Scene: " + sceneName + ", " + "Clients Count: " + clientsCompleted.Count);
+        SceneManager.instance.LoadScene("Game");
     }
 }

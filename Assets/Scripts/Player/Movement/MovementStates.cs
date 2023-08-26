@@ -9,11 +9,13 @@ public static class MovementStates
     {
         public int Tick;
         public Vector3 InputVector;
+        public bool Jump;
 
         public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
         {
             serializer.SerializeValue(ref Tick);
             serializer.SerializeValue(ref InputVector);
+            serializer.SerializeValue(ref Jump);
         }
     }
 
@@ -28,4 +30,5 @@ public static class MovementStates
             serializer.SerializeValue(ref Position);
         }
     }
+
 }
